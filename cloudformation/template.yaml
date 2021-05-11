@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  SubnetIds:
+    Description: "SubnetIds"
+    Type: String
+  ProjectName:
+    Description: "Project name"
+    Type: String
+  SourceFunctionBucket:
+    Description: "Bucket where the lambda code is found"
+    Type: String
+  SourceFunctionKey:
+    Description: "Key where the lambda code is found"
+    Type: String
+  VpcId:
+    Description: "VPC Id"
+    Type: String
+
+Resources:
+
+  Function:
+    Type: AWS::Serverless::Function
+    DependsOn:
+      - FunctionRole
+      - LambdaSecurityGroup
+    Properties:
+      FunctionName: !Ref ProjectName
+      Handler: index.handler
+      Runtime: nodejs12.x
+      CodeUri:
+        Bucket: !Ref SourceFunctionBucket
+        Key: !Ref SourceFunctionKey
+      MemorySize: 256
+      Timeout: 300
+      Tracing: Active
+      Role: !GetAtt FunctionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Split [",", !Ref SubnetIds ]
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${ProjectName}-sg"
+      GroupDescription: !Sub "${ProjectName}-sg"
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref ProjectName
+      AssumeRolePolicyDocument:
+        Statement:
+        -
+          Effect: "Allow"
+          Principal:
+            Service:
+              - "lambda.amazonaws.com"
+          Action:
+          - "sts:AssumeRole"
+      Policies:
+        - PolicyName: !Ref ProjectName
+          PolicyDocument:
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              -
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                Resource: "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "xray:PutTelemetryRecords"
+                  - "xray:PutTraceSegments"
+                Resource: "*"
